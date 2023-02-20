@@ -55,6 +55,17 @@ def build_graph(img):
                             graph[src].add(dest)
     return graph
 
+def get_all_points(img):
+    ret=[]
+    dim=len(img)
+    for y in range(dim):
+        for x in range(dim):
+            if img[y][x]<1:
+                continue
+            src=coords_to_num((y,x))
+            ret.append(src)
+    return ret
+
 def dijkstra(graph, start_node):
     visited = set()
     parentsMap = {}
@@ -79,14 +90,20 @@ def dijkstra(graph, start_node):
         
     return parentsMap, nodeCosts
 
-def img_to_list(img):
+def img_to_list(img, dijkstra_sort):
     raw_img=tf.math.ceil(tf.squeeze(img)/255).numpy()
-    sp=find_start_points(raw_img)
-    graph=build_graph(raw_img)
-    (parentsMap, nodeCosts)=dijkstra(graph,sp[0])
-    return sorted([k for k in nodeCosts.keys()])
+    if dijkstra_sort:
+        sp=find_start_points(raw_img)
+        graph=build_graph(raw_img)
+        (parentsMap, nodeCosts)=dijkstra(graph,sp[0])
+        sorted_nodes=sorted([pair for pair in nodeCosts.items()], key=lambda x: x[1])
+        sorted_nodes=[k[0] for k in sorted_nodes]
+    else:
+        sorted_nodes=sorted(get_all_points(raw_img))
+    return sorted_nodes
 
-def make_dataset(limit,threshold=20):
+
+def make_dataset(limit,threshold=20, dijkstra_sort=True):
     counts={x:0 for x in range(10)}
     data_list=[]
     (ds_train, ds_test), ds_info = tfds.load(
@@ -97,13 +114,14 @@ def make_dataset(limit,threshold=20):
     with_info=True,)
     c=0
     for data in ds_train:
+        print("ds_train",c)
         c+=1
         if c >limit:
             break
         (img,label)=data
         digit=label.numpy()
         counts[digit]+=1
-        sequence=img_to_list(img)
+        sequence=img_to_list(img, dijkstra_sort)
         if len(sequence)>= threshold:
             item={
                 "label":digit,
@@ -114,13 +132,14 @@ def make_dataset(limit,threshold=20):
             data_list.append(item)
     c=0
     for data in ds_test:
+        print('ds_test???',c)
         c+=1
         if c >limit:
             break
         (img,label)=data
         digit=label.numpy()
         counts[digit]+=1
-        sequence=img_to_list(img)
+        sequence=img_to_list(img,dijkstra_sort)
         if len(sequence)>= threshold:
             item={
                 "label":digit,
@@ -133,10 +152,11 @@ def make_dataset(limit,threshold=20):
     return dataset
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument("--limit",type=int,default=150)
+    parser.add_argument("--limit",type=int,default=1000000)
     parser.add_argument("--threshold",type=int,default=10)
     parser.add_argument("--dataset",type=str,default="mnist_dijkstra",help='name of datset to push to hub')
     parser.add_argument("--version",type=str,default="0.0")
+    parser.add_argument("--sorting", type=bool, default=True, help="whather to dijkstra sort")
     args = parser.parse_args()
-    dataset=make_dataset(args.limit, threshold=args.threshold)
-    #dataset.push_to_hub("jlbaker361/{}_v{}".format(args.dataset,args.version))
+    dataset=make_dataset(args.limit, threshold=args.threshold, dijkstra_sort=args.sorting)
+    dataset.push_to_hub("jlbaker361/{}_v{}".format(args.dataset,args.version))
